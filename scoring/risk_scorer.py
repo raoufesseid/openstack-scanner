@@ -7,9 +7,16 @@ SEVERITY_WEIGHTS = {
 
 
 def calculate_score(findings):
-    score = 0
+    raw_score = 0
 
     for f in findings:
-        score += SEVERITY_WEIGHTS.get(f.get("severity", "LOW"), 0)
+        severity = f.get("severity", "LOW").upper()
+        raw_score += SEVERITY_WEIGHTS.get(severity, 0)
 
-    return min(score, 100)
+    total_findings = len(findings)
+    max_possible = total_findings * 40
+
+    if max_possible == 0:
+        return 0
+
+    return round((raw_score / max_possible) * 100, 2)
