@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenStack Security Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <div class="container">
+
+    <!-- Top Header -->
+    <header class="top-bar">
+      <div>
+        <h1>OpenStack Security Dashboard</h1>
+        <p class="subtitle">
+          Cloud Security Risk Monitoring and Misconfiguration Overview
+        </p>
+      </div>
+      <button id="runScanBtn">Run Scan</button>
+    </header>
+
+    <!-- Summary Cards -->
+    <section class="summary">
+      <div class="card">
+        <h3>Overall Risk Score</h3>
+        <p id="riskScore">0 / 100</p>
+      </div>
+
+      <div class="card">
+        <h3>Risk Level</h3>
+        <p id="riskLevel">-</p>
+      </div>
+
+      <div class="card">
+        <h3>Total Findings</h3>
+        <p id="totalFindings">0</p>
+      </div>
+    </section>
+
+    <!-- Findings Table -->
+    <section class="findings-section">
+      <h2>Security Findings</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Severity</th>
+            <th>Resource</th>
+            <th>Detail</th>
+            <th>Remediation</th>
+          </tr>
+        </thead>
+
+        <tbody id="findingsTableBody">
+          <!-- Data will be injected here -->
+        </tbody>
+      </table>
+    </section>
+
+  </div>
+
+  <script src="script.js"></script>
+
+</body>
+</html>

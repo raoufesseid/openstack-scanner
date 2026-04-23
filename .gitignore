@@ -1,5 +1,6 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 venv/
 .env
+report.json
 report_*.json

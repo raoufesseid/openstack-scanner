@@ -1,158 +1,169 @@
 # OpenStack Security Misconfiguration Scanner
 
-An automated tool that scans an OpenStack cloud environment for security misconfigurations and generates a risk report with severity scoring.
+An automated tool that scans an OpenStack cloud environment for security misconfigurations, generates a risk report, and visualizes results through a lightweight web dashboard.
 
 ---
 
-## Architecture
+## 🚀 Overview
 
-```
-openstack-scanner/
-├── main.py                        # Entry point
-├── config.py                      # OpenStack connection via env vars
-├── collector/
-│   └── data_collector.py          # Fetches resources from OpenStack APIs
-├── rules/
-│   ├── network_rules.py           # Checks security group rules
-│   ├── ip_rules.py                # Checks floating IP allocation
-│   └── storage_rules.py          # Checks volume encryption
-├── scoring/
-│   └── risk_scorer.py             # Calculates weighted risk score
-└── reporting/
-    └── report_generator.py        # Prints report + exports JSON
-```
+This project consists of two main components:
 
-The scanner follows a modular pipeline:
+1. Scanner Engine (Backend)
+   - Collects OpenStack resources
+   - Applies security rules
+   - Calculates risk score
+   - Exports results as JSON
 
-```
-OpenStack APIs → Data Collector → Rule Engine → Risk Scorer → Reporter
-```
+2. Web Dashboard (Frontend)
+   - Displays findings in a modern UI
+   - Dynamically loads scan results from /report.json
+   - Designed to be portable and backend-agnostic
 
 ---
 
-## Requirements
+## 🧱 Architecture
+
+openstack-scanner/ ├── main.py ├── config.py ├── collector/ │   └── data_collector.py ├── rules/ │   ├── network_rules.py │   ├── ip_rules.py │   └── storage_rules.py ├── scoring/ │   └── risk_scorer.py ├── reporting/ │   └── report_generator.py │ ├── index.html ├── style.css ├── script.js │ └── .gitignore
+
+---
+
+## 🔄 Data Flow
+
+OpenStack APIs       ↓ Data Collector       ↓ Rule Engine       ↓ Risk Scorer       ↓ JSON Report (report.json)       ↓ Frontend UI (Dashboard)
+
+---
+
+## 📦 Requirements
 
 - Python 3.8+
-- A running OpenStack environment (DevStack or Kolla-Ansible)
+- OpenStack environment (DevStack or Kolla-Ansible)
 - Admin credentials
+- Web browser
 
 ---
 
-## Setup
+## ⚙️ Setup
 
-**1. Clone the repository**
-```bash
-git clone https://github.com/raoufesseid/openstack-scanner.git
-cd openstack-scanner
-```
+### 1. Clone repository
+bash git clone https://github.com/raoufesseid/openstack-scanner.git cd openstack-scanner 
 
-**2. Create and activate a virtual environment**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+### 2. Create virtual environment
+bash python3 -m venv venv source venv/bin/activate 
 
-**3. Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+### 3. Install dependencies
+bash pip install -r requirements.txt 
 
-**4. Set your OpenStack credentials as environment variables**
-```bash
-export OS_AUTH_URL=http://<your-openstack-ip>:5000/v3
-export OS_PROJECT_NAME=admin
-export OS_USERNAME=admin
-export OS_PASSWORD=your_password
-export OS_USER_DOMAIN_NAME=Default
-export OS_PROJECT_DOMAIN_NAME=Default
-```
+### 4. Configure OpenStack credentials
+bash export OS_AUTH_URL=http://<your-openstack-ip>:5000/v3 export OS_PROJECT_NAME=admin export OS_USERNAME=admin export OS_PASSWORD=your_password export OS_USER_DOMAIN_NAME=Default export OS_PROJECT_DOMAIN_NAME=Default 
 
-> Or simply source your existing openrc file:
-> ```bash
-> source ~/admin-openrc.sh
-> ```
+Or:
+bash source ~/admin-openrc.sh 
 
 ---
 
-## Usage
+## ▶️ Usage
 
-**Run against a real OpenStack environment:**
-```bash
-python main.py
-```
+### Run scanner
+bash python main.py 
 
-**Run with dummy data (no OpenStack needed):**
-```bash
-python test_logic.py
-```
+This generates:
+- report.json
+- report_YYYYMMDD_HHMMSS.json
 
 ---
 
-## What It Checks
+## 🖥️ Run UI Dashboard
+
+Start server:
+bash python3 -m http.server 8000 --bind 0.0.0.0 
+
+Open:
+- http://localhost:8000
+- http://<VM-IP>:8000
+
+---
+
+## 🎯 UI Features
+
+- Dark (black + green) dashboard
+- Risk score visualization
+- Severity classification
+- Dynamic findings table
+- Fetches data from /report.json
+- Portable design (no hardcoded backend)
+
+---
+
+## 🔍 What It Checks
 
 | Check | Severity | API |
-|---|---|---|
-| SSH open to 0.0.0.0/0 or ::/0 | HIGH | Neutron |
-| RDP open to 0.0.0.0/0 or ::/0 | HIGH | Neutron |
-| Database ports exposed publicly (3306, 5432, 1433) | CRITICAL | Neutron |
-| Allow-all security group rule | CRITICAL | Neutron |
-| Unencrypted Cinder volumes | MEDIUM | Cinder |
-| Orphaned floating IPs | LOW | Neutron |
+|------|--------|-----|
+| SSH open to 0.0.0.0/0 | HIGH | Neutron |
+| RDP open to public | HIGH | Neutron |
+| Public database ports | CRITICAL | Neutron |
+| Allow-all security groups | CRITICAL | Neutron |
+| Unencrypted volumes | MEDIUM | Cinder |
+| Unused floating IPs | LOW | Neutron |
 
 ---
 
-## Risk Scoring
-
-Each finding contributes to an overall risk score (capped at 100):
+## 📊 Risk Scoring
 
 | Severity | Points |
-|---|---|
+|---------|--------|
 | CRITICAL | 40 |
 | HIGH | 25 |
 | MEDIUM | 15 |
 | LOW | 5 |
 
-**Score ranges:**
-- 🔴 70–100 → HIGH RISK
-- 🟡 40–69 → MEDIUM RISK
-- 🟢 0–39 → LOW RISK
+- 🔴 70–100 → HIGH RISK  
+- 🟡 40–69 → MEDIUM RISK  
+- 🟢 0–39 → LOW RISK  
 
 ---
 
-## Output
+## 📄 Output
 
-The scanner prints a formatted report to the console and saves a timestamped JSON file:
+### Console
+- Findings list
+- Severity breakdown
+- Risk score
 
-```
-report_YYYYMMDD_HHMMSS.json
-```
+### JSON
+json {   "generated_at": "...",   "risk_score": 100,   "total_findings": 17,   "findings": [] } 
 
-Example console output:
-```
-🚀 Starting OpenStack Security Scanner...
+---
 
-  ✔ Collected 37 resources across 5 categories
+## ⚠️ Notes
 
-==================================================
-   OpenStack Security Scanner — Report
-   Generated: 2026-04-10 11:36:22
-==================================================
+- report.json is generated dynamically (ignored in git)
+- UI depends on /report.json
+- Ready for Kolla integration
 
-📋 Found 12 issue(s):
-   CRITICAL: 2
-   HIGH: 3
-   MEDIUM: 4
-   LOW: 3
+---
 
-[CRITICAL] Public Database Port
-  Resource    : Security Group: misconfigured-sg
-  Detail      : Rule exposes MySQL (port 3306) from 0.0.0.0/0
-  Remediation : Database ports should never be publicly accessible.
-...
+## 🔮 Future Work
 
-Overall Risk Score: 100/100
-🔴 Cloud Security Status: HIGH RISK
-==================================================
+- Kolla integration
+- Backend API
+- Authentication
+- Scan history
+- CI/CD integration
 
-📄 JSON report saved to: report_20260410_113622.json
-```
+---
+
+## 👨‍💻 Contribution
+
+1. Fork repo  
+2. Create branch  
+3. Commit changes  
+4. Open PR  
+
+---
+
+## 📌 Summary
+
+- Modular scanner backend  
+- Risk scoring system  
+- Portable UI dashboard  
+- Ready for production integrat
