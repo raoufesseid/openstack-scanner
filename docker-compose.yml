@@ -7,3 +7,14 @@ services:
     env_file: .env
     volumes:
       - ./reports:/app/reports
+    command: ["python", "main.py"]
+
+  ui:
+    build:
+      context: .
+      network: host
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./reports:/app/reports
+    command: ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "9000"]

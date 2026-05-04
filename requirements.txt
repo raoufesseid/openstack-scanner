@@ -1,1 +1,4 @@
 openstacksdk
+fastapi
+uvicorn[standard]
+python-multipart
