@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine, Area, AreaChart
+} from 'recharts'
 
 const API_BASE = `http://${window.location.hostname}:9000`
 
@@ -44,6 +48,24 @@ function riskLabel(score) {
   return { label: 'Low', cls: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' }
 }
 
+function riskColor(score) {
+  if (score >= 70) return '#f87171'
+  if (score >= 40) return '#facc15'
+  return '#34d399'
+}
+
+function parseFilename(filename) {
+  const match = filename.match(/report_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/)
+  if (!match) return null
+  const [, year, month, day, hour, min] = match
+  const date = new Date(`${year}-${month}-${day}T${hour}:${min}:00`)
+  return {
+    timestamp: date.getTime(),
+    label: `${day}/${month} ${hour}:${min}`,
+    shortDate: `${day}/${month}`,
+  }
+}
+
 function DonutRing({ score }) {
   const pct = Math.min(score, 100)
   return (
@@ -76,6 +98,422 @@ function MiniBars({ reports }) {
     </div>
   )
 }
+
+// ── Custom chart tooltip ──────────────────────────────────────────────────────
+function CustomTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  const risk = riskLabel(d.score)
+  return (
+    <div className="rounded-2xl border border-white/15 bg-slate-900/98 p-4 shadow-2xl backdrop-blur-xl min-w-[160px]">
+      <p className="text-xs text-slate-400 mb-3">{d.fullLabel}</p>
+      <div className="flex items-end gap-2 mb-1">
+        <span className="text-3xl font-black text-white">{d.score.toFixed(1)}</span>
+        <span className="text-slate-400 text-sm mb-1">/100</span>
+      </div>
+      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs font-semibold ${risk.cls}`}>
+        {risk.label} Risk
+      </span>
+      <div className="mt-3 pt-3 border-t border-white/10 text-xs text-slate-400">
+        {d.findings} finding{d.findings !== 1 ? 's' : ''}
+      </div>
+    </div>
+  )
+}
+
+// ── Custom dot on the line ────────────────────────────────────────────────────
+function CustomDot(props) {
+  const { cx, cy, payload, selectedIdx } = props
+  const isSelected = payload.idx === selectedIdx
+  const color = riskColor(payload.score)
+  return (
+    <g key={`dot-${payload.idx}`}>
+      {isSelected && (
+        <circle cx={cx} cy={cy} r={14} fill={color} fillOpacity={0.15} />
+      )}
+      <circle
+        cx={cx} cy={cy}
+        r={isSelected ? 7 : 5}
+        fill={isSelected ? color : '#0f172a'}
+        stroke={color}
+        strokeWidth={isSelected ? 0 : 2}
+        style={{ cursor: 'pointer', transition: 'r 0.15s ease' }}
+      />
+    </g>
+  )
+}
+
+// ── History Page ──────────────────────────────────────────────────────────────
+function HistoryPage({ allReports }) {
+  const [fullHistory, setFullHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
+  const [selectedIdx, setSelectedIdx] = useState(null)
+  const [hoveredIdx, setHoveredIdx] = useState(null)
+  const [activeView, setActiveView] = useState('chart') // 'chart' | 'table'
+
+  useEffect(() => {
+    async function fetchAll() {
+      setLoadingHistory(true)
+      try {
+        const details = await Promise.all(
+          allReports.map((name) =>
+            fetch(`${API_BASE}/reports/${name}`)
+              .then(r => r.json())
+              .then(data => {
+                const parsed = parseFilename(name)
+                return parsed ? { ...data, filename: name, ...parsed } : null
+              })
+              .catch(() => null)
+          )
+        )
+        const valid = details
+          .filter(Boolean)
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .map((r, i) => ({ ...r, idx: i }))
+        setFullHistory(valid)
+        // Auto-select the latest
+        if (valid.length > 0) setSelectedIdx(valid.length - 1)
+      } finally {
+        setLoadingHistory(false)
+      }
+    }
+    if (allReports.length > 0) fetchAll()
+  }, [allReports])
+
+  const chartData = fullHistory.map((r) => ({
+    name: r.shortDate,
+    fullLabel: r.label,
+    score: parseFloat(r.risk_score.toFixed(2)),
+    findings: r.total_findings,
+    idx: r.idx,
+  }))
+
+  const bestScore  = fullHistory.length ? Math.min(...fullHistory.map(r => r.risk_score)) : 0
+  const worstScore = fullHistory.length ? Math.max(...fullHistory.map(r => r.risk_score)) : 0
+  const latestScore = fullHistory.length ? fullHistory[fullHistory.length - 1].risk_score : 0
+  const firstScore  = fullHistory.length ? fullHistory[0].risk_score : 0
+  const trend = latestScore - firstScore
+
+  const selectedReport = selectedIdx !== null ? fullHistory[selectedIdx] : null
+
+  const summaryCards = [
+    {
+      label: 'Total Scans',
+      value: allReports.length,
+      sub: 'all time',
+      color: 'text-white',
+      accent: 'border-white/10',
+    },
+    {
+      label: 'Best Score',
+      value: bestScore.toFixed(1),
+      sub: 'lowest risk recorded',
+      color: 'text-emerald-300',
+      accent: 'border-emerald-400/20',
+    },
+    {
+      label: 'Worst Score',
+      value: worstScore.toFixed(1),
+      sub: 'highest risk recorded',
+      color: 'text-red-300',
+      accent: 'border-red-400/20',
+    },
+    {
+      label: 'Overall Trend',
+      value: `${trend > 0 ? '+' : ''}${trend.toFixed(1)}`,
+      sub: trend <= 0 ? '↓ improving over time' : '↑ worsening over time',
+      color: trend <= 0 ? 'text-emerald-300' : 'text-red-300',
+      accent: trend <= 0 ? 'border-emerald-400/20' : 'border-red-400/20',
+    },
+  ]
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Page header ── */}
+      <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-blue-950 p-7">
+        <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-cyan-400/8 blur-3xl" />
+        <p className="text-sm uppercase tracking-[0.25em] text-cyan-300">Analytics</p>
+        <h2 className="mt-2 text-4xl font-black tracking-tight text-white">Scan History</h2>
+        <p className="mt-3 text-base text-slate-300 max-w-xl">
+          Track how your cloud security posture has evolved across all {allReports.length} scans.
+        </p>
+      </div>
+
+      {loadingHistory ? (
+        <div className="rounded-[28px] border border-white/10 bg-white/5 p-16 text-center">
+          <div className="inline-flex gap-1.5 items-center text-slate-400">
+            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '120ms' }} />
+            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '240ms' }} />
+            <span className="ml-3 text-sm">Loading full scan history…</span>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* ── Summary stat cards ── */}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map(s => (
+              <div key={s.label} className={`rounded-[28px] border ${s.accent} bg-white/5 p-5 backdrop-blur-xl`}>
+                <p className="text-sm text-slate-400">{s.label}</p>
+                <h3 className={`mt-3 text-4xl font-black ${s.color}`}>{s.value}</h3>
+                <p className="mt-3 text-sm text-slate-500">{s.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Chart card ── */}
+          <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl shadow-[0_15px_45px_rgba(0,0,0,0.25)]">
+            {/* Card header */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-bold text-white">Risk Score Trend</h3>
+                <p className="mt-1 text-sm text-slate-400">
+                  Click any point to inspect that scan's details below
+                </p>
+              </div>
+              {/* View toggle */}
+              <div className="flex items-center gap-1 rounded-2xl border border-white/10 bg-slate-950/60 p-1">
+                {['chart', 'table'].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setActiveView(v)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize transition ${
+                      activeView === v
+                        ? 'bg-cyan-400 text-slate-950'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="h-[2px] w-5 rounded-full bg-red-400/60 inline-block" />
+                High risk (≥70)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-[2px] w-5 rounded-full bg-yellow-400/60 inline-block" />
+                Medium (40–69)
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-[2px] w-5 rounded-full bg-emerald-400/60 inline-block" />
+                Low (&lt;40)
+              </span>
+            </div>
+
+            {/* Chart */}
+            {activeView === 'chart' && (
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 15, right: 20, left: 0, bottom: 5 }}
+                  onClick={e => {
+                    if (e?.activePayload?.[0]) {
+                      setSelectedIdx(e.activePayload[0].payload.idx)
+                    }
+                  }}
+                  onMouseMove={e => {
+                    if (e?.activePayload?.[0]) setHoveredIdx(e.activePayload[0].payload.idx)
+                  }}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                >
+                  <defs>
+                    <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#22d3ee" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: '#475569', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tick={{ fill: '#475569', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1 }} />
+                  {/* Risk band reference lines */}
+                  <ReferenceLine y={70} stroke="rgba(248,113,113,0.25)" strokeDasharray="5 4" label={{ value: '70', fill: '#f87171', fontSize: 10, position: 'right' }} />
+                  <ReferenceLine y={40} stroke="rgba(250,204,21,0.25)"  strokeDasharray="5 4" label={{ value: '40', fill: '#facc15',  fontSize: 10, position: 'right' }} />
+                  <Area
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#22d3ee"
+                    strokeWidth={2.5}
+                    fill="url(#scoreGrad)"
+                    dot={<CustomDot selectedIdx={selectedIdx} />}
+                    activeDot={{ r: 8, fill: '#22d3ee', stroke: '#fff', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+
+            {/* Table view */}
+            {activeView === 'table' && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-separate border-spacing-y-2">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500">
+                      <th className="px-4 pb-2">#</th>
+                      <th className="px-4 pb-2">Date & Time</th>
+                      <th className="px-4 pb-2">Risk Score</th>
+                      <th className="px-4 pb-2">Findings</th>
+                      <th className="px-4 pb-2">Level</th>
+                      <th className="px-4 pb-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...fullHistory].reverse().map((r, i) => {
+                      const risk = riskLabel(r.risk_score)
+                      const isSelected = r.idx === selectedIdx
+                      return (
+                        <tr
+                          key={r.filename}
+                          onClick={() => setSelectedIdx(r.idx)}
+                          className={`text-sm text-slate-300 cursor-pointer transition ${isSelected ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                        >
+                          <td className={`rounded-l-2xl border-y border-l px-4 py-3 text-slate-500 ${isSelected ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-white/10 bg-slate-950/60'}`}>
+                            {allReports.length - i}
+                          </td>
+                          <td className={`border-y px-4 py-3 ${isSelected ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-white/10 bg-slate-950/60'}`}>{r.generated_at}</td>
+                          <td className={`border-y px-4 py-3 font-bold ${isSelected ? 'border-cyan-400/30 bg-cyan-400/5 text-cyan-300' : 'border-white/10 bg-slate-950/60 text-white'}`}>
+                            {r.risk_score.toFixed(1)}
+                          </td>
+                          <td className={`border-y px-4 py-3 ${isSelected ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-white/10 bg-slate-950/60'}`}>{r.total_findings}</td>
+                          <td className={`border-y px-4 py-3 ${isSelected ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-white/10 bg-slate-950/60'}`}>
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${risk.cls}`}>{risk.label}</span>
+                          </td>
+                          <td className={`rounded-r-2xl border-y border-r px-4 py-3 ${isSelected ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-white/10 bg-slate-950/60'}`}>
+                            <a
+                              href={`${API_BASE}/reports/${r.filename}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="text-cyan-400 hover:text-cyan-300 text-xs font-semibold"
+                            >
+                              View →
+                            </a>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── Selected scan detail panel ── */}
+          {selectedReport && (
+            <div className="rounded-[30px] border border-cyan-400/25 bg-gradient-to-br from-cyan-400/5 to-transparent p-6 backdrop-blur-xl shadow-[0_0_40px_rgba(34,211,238,0.06)]">
+              <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-cyan-300 mb-1">Selected Scan</p>
+                  <h3 className="text-2xl font-bold text-white">{selectedReport.generated_at}</h3>
+                  <p className="text-sm text-slate-400 mt-1">Scan #{selectedReport.idx + 1} of {fullHistory.length}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* Prev / Next navigation */}
+                  <button
+                    onClick={() => setSelectedIdx(i => Math.max(0, i - 1))}
+                    disabled={selectedIdx === 0}
+                    className="h-9 w-9 flex items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={() => setSelectedIdx(i => Math.min(fullHistory.length - 1, i + 1))}
+                    disabled={selectedIdx === fullHistory.length - 1}
+                    className="h-9 w-9 flex items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  >
+                    →
+                  </button>
+                  <a
+                    href={`${API_BASE}/reports/${selectedReport.filename}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-2xl bg-cyan-400 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-300 transition"
+                  >
+                    View Full Report →
+                  </a>
+                </div>
+              </div>
+
+              {/* Stat tiles */}
+              <div className="grid gap-4 sm:grid-cols-3 mb-5">
+                {[
+                  {
+                    label: 'Risk Score',
+                    value: selectedReport.risk_score.toFixed(1),
+                    sub: riskLabel(selectedReport.risk_score).label + ' risk',
+                    cls: riskLabel(selectedReport.risk_score).cls.split(' ').find(c => c.startsWith('text-')),
+                  },
+                  {
+                    label: 'Total Findings',
+                    value: selectedReport.total_findings,
+                    sub: 'issues detected',
+                    cls: 'text-white',
+                  },
+                  {
+                    label: 'vs Previous',
+                    value: (() => {
+                      if (selectedIdx === 0) return '—'
+                      const prev = fullHistory[selectedIdx - 1]
+                      const diff = selectedReport.risk_score - prev.risk_score
+                      return `${diff > 0 ? '+' : ''}${diff.toFixed(1)}`
+                    })(),
+                    sub: selectedIdx === 0 ? 'first scan' : (selectedReport.risk_score <= fullHistory[selectedIdx - 1]?.risk_score ? '↓ improved' : '↑ worsened'),
+                    cls: (() => {
+                      if (selectedIdx === 0) return 'text-slate-400'
+                      const diff = selectedReport.risk_score - fullHistory[selectedIdx - 1]?.risk_score
+                      return diff <= 0 ? 'text-emerald-300' : 'text-red-300'
+                    })(),
+                  },
+                ].map(t => (
+                  <div key={t.label} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                    <p className="text-xs text-slate-400">{t.label}</p>
+                    <p className={`text-3xl font-black mt-2 ${t.cls}`}>{t.value}</p>
+                    <p className="text-xs text-slate-500 mt-1">{t.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Top 3 findings from selected scan */}
+              {selectedReport.findings && selectedReport.findings.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-slate-300 mb-3">Top findings in this scan</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {selectedReport.findings.slice(0, 3).map((f, i) => (
+                      <div key={i} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${badgeClass(f.severity)}`}>{f.severity}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-white">{f.check}</p>
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">{f.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
@@ -195,9 +633,10 @@ export default function App() {
       </div>
       <div className="space-y-2">
         <button className={navButtonClass(page === 'dashboard')} onClick={() => setPage('dashboard')}>Dashboard</button>
-        <button className={navButtonClass(page === 'findings')} onClick={() => setPage('findings')}>Findings</button>
-        <button className={navButtonClass(page === 'reports')} onClick={() => setPage('reports')}>Reports</button>
-        <button className={navButtonClass(page === 'settings')} onClick={() => setPage('settings')}>Settings</button>
+        <button className={navButtonClass(page === 'findings')}  onClick={() => setPage('findings')}>Findings</button>
+        <button className={navButtonClass(page === 'reports')}   onClick={() => setPage('reports')}>Reports</button>
+        <button className={navButtonClass(page === 'history')}   onClick={() => setPage('history')}>History</button>
+        <button className={navButtonClass(page === 'settings')}  onClick={() => setPage('settings')}>Settings</button>
       </div>
       <div className="mt-6 rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
         <div className="flex items-center justify-between">
@@ -263,7 +702,12 @@ export default function App() {
                     <h3 className="text-2xl font-bold text-white">Scan History</h3>
                     <p className="mt-1 text-sm text-slate-400">Risk score across last {reportDetails.length} scans.</p>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">Recent Scans</span>
+                  <button
+                    onClick={() => setPage('history')}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10 transition"
+                  >
+                    Full History →
+                  </button>
                 </div>
                 <MiniBars reports={reportDetails} />
               </div>
@@ -336,7 +780,7 @@ export default function App() {
                   <h3 className="text-2xl font-bold text-white">Quick Actions</h3>
                   <div className="mt-5 space-y-3">
                     <ScanButton label="Start Scan" className="w-full rounded-2xl bg-cyan-400 px-4 py-3 font-bold text-slate-950 hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed" />
-                    <button className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white hover:bg-white/10" onClick={() => setPage('reports')}>View History</button>
+                    <button className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white hover:bg-white/10" onClick={() => setPage('history')}>View History</button>
                     <button className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white hover:bg-white/10" onClick={() => setPage('findings')}>Browse Findings</button>
                   </div>
                 </div>
@@ -458,9 +902,10 @@ export default function App() {
         <Sidebar />
         <div>
           {page === 'dashboard' && <DashboardPage />}
-          {page === 'findings' && <FindingsPage />}
-          {page === 'reports' && <ReportsPage />}
-          {page === 'settings' && <SettingsPage />}
+          {page === 'findings'  && <FindingsPage />}
+          {page === 'reports'   && <ReportsPage />}
+          {page === 'history'   && <HistoryPage allReports={reports} />}
+          {page === 'settings'  && <SettingsPage />}
         </div>
       </div>
     </div>
