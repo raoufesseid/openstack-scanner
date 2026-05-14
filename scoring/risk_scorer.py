@@ -1,22 +1,40 @@
-SEVERITY_WEIGHTS = {
-    "CRITICAL": 40,
-    "HIGH": 25,
-    "MEDIUM": 15,
-    "LOW": 5,
+import math
+
+LIKELIHOOD = {
+    "LOW": 1,
+    "MEDIUM": 2,
+    "HIGH": 3,
+    "CRITICAL": 4,
+}
+
+IMPACT = {
+    "LOW": 1,
+    "MEDIUM": 2,
+    "HIGH": 3,
+    "CRITICAL": 4,
 }
 
 
 def calculate_score(findings):
-    raw_score = 0
+    if not findings:
+        return 0
+
+    total_likelihood = 0
+    max_impact = 0
 
     for f in findings:
         severity = f.get("severity", "LOW").upper()
-        raw_score += SEVERITY_WEIGHTS.get(severity, 0)
 
-    total_findings = len(findings)
-    max_possible = total_findings * 40
+        likelihood = LIKELIHOOD.get(severity, 1)
+        impact = IMPACT.get(severity, 1)
 
-    if max_possible == 0:
-        return 0
+        total_likelihood += likelihood
+        max_impact = max(max_impact, impact)
 
-    return round((raw_score / max_possible) * 100, 2)
+    # normalize likelihood
+    normalized_likelihood = min(total_likelihood / len(findings), 4)
+
+    # OWASP formula
+    score = (normalized_likelihood * max_impact / 16) * 100
+
+    return round(score, 2)

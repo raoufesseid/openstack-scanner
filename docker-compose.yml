@@ -5,7 +5,7 @@ services:
       network: host
     network_mode: host
     env_file: .env
-    restart: always
+    restart: no
     volumes:
       - ./reports:/app/reports
     command: ["python", "main.py"]
