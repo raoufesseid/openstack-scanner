@@ -93,13 +93,17 @@ function navButtonClass(active) {
 const NAV_ICONS = { dashboard: '⬡', findings: '◉', reports: '▤', history: '◈', settings: '⊙' }
 
 /* ── Stat Card ──────────────────────────────────────────────────────────── */
-function StatCard({ title, value, note, accentColor, delay }) {
+function StatCard({ title, value, note, accentColor, delay, onClick }) {
   return (
-    <div className={`card-hover fade-in stagger-${delay} relative overflow-hidden rounded-2xl border border-white/8 bg-slate-900/80 p-5 backdrop-blur`}>
+    <div
+      onClick={onClick}
+      className={`card-hover fade-in stagger-${delay} relative overflow-hidden rounded-2xl border border-white/8 bg-slate-900/80 p-5 backdrop-blur ${onClick ? 'cursor-pointer hover:border-cyan-400/30' : ''}`}
+    >
       <div className={`absolute left-0 top-0 h-full w-[3px] rounded-l-2xl ${accentColor}`} />
       <p className="text-xs font-medium uppercase tracking-widest text-slate-500">{title}</p>
       <p className="mono mt-3 text-3xl font-bold text-white">{value}</p>
       <p className="mt-2 text-xs text-slate-500">{note}</p>
+      {onClick && <p className="mt-2 text-[10px] text-cyan-400/60">Click to explore →</p>}
     </div>
   )
 }
@@ -127,33 +131,37 @@ function DonutRing({ score }) {
 /* ── MiniBars ───────────────────────────────────────────────────────────── */
 function MiniBars({ reports }) {
   const [hovered, setHovered] = useState(null)
-  const bars = [...reports].slice(0, 7).reverse().map(r => r.risk_score ?? 0)
+  const bars = [...reports].reverse().map(r => r.risk_score ?? 0)
   const max = Math.max(...bars, 1)
   if (!bars.length) return <p className="text-sm text-slate-600">No data yet.</p>
   return (
-    <div className="flex h-36 items-end gap-2">
-      {bars.map((value, i) => {
-        const color = riskColor(value)
-        const isHov = hovered === i
-        return (
-          <div key={i} className="group relative flex flex-1 flex-col items-center gap-1.5 cursor-default"
-            onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
-            {isHov && (
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-lg border border-white/10 bg-slate-900 px-2 py-1 text-xs font-bold text-white whitespace-nowrap z-10 mono">
-                {value.toFixed(1)}
-              </div>
-            )}
-            <div className="w-full rounded-t-lg transition-all duration-200"
-              style={{
-                height: `${Math.max((value / max) * 100, 5)}%`,
-                background: `linear-gradient(to top, ${color}99, ${color}dd)`,
-                boxShadow: isHov ? `0 0 16px ${color}60` : 'none',
-                transform: isHov ? 'scaleX(1.1)' : 'scaleX(1)',
-              }} />
-            <span className="text-[10px] text-slate-600">S{bars.length - i}</span>
-          </div>
-        )
-      })}
+    <div className="relative w-full" style={{ height: '144px' }}>
+      <div className="absolute inset-0 flex items-end gap-2">
+        {bars.map((value, i) => {
+          const color = riskColor(value)
+          const isHov = hovered === i
+          const heightPct = Math.max((value / max) * 100, 6)
+          return (
+            <div key={i} className="relative flex flex-1 flex-col items-center gap-1.5 cursor-default h-full justify-end"
+              onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
+              {isHov && (
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-lg border border-white/10 bg-slate-900 px-2 py-1 text-xs font-bold text-white whitespace-nowrap z-10 mono">
+                  {value.toFixed(1)}
+                </div>
+              )}
+              <div
+                className="w-full rounded-t-lg transition-all duration-300"
+                style={{
+                  height: `${heightPct}%`,
+                  background: `linear-gradient(to top, ${color}88, ${color}ee)`,
+                  boxShadow: isHov ? `0 0 16px ${color}60` : `0 0 8px ${color}30`,
+                }}
+              />
+              <span className="text-[10px] text-slate-600 mt-1">S{bars.length - i}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -534,6 +542,106 @@ function HistoryPage({ allReports }) {
   )
 }
 
+/* ── Findings Page ──────────────────────────────────────────────────────── */
+function FindingsPage({ findings, filteredFindings, search, setSearch, severityFilter, setSeverityFilter, categoryFilter, setCategoryFilter, expandedRow, setExpandedRow }) {
+  const categories = ['ALL', 'Network', 'Storage', 'Identity', 'Compute', 'General']
+  const categoryCounts = useMemo(() => {
+    const c = {}
+    findings.forEach(f => { c[f.category] = (c[f.category] || 0) + 1 })
+    return c
+  }, [findings])
+
+  return (
+    <div className="space-y-4 fade-in">
+      <div className="rounded-2xl border border-white/8 bg-slate-900/80 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-white">Findings</h2>
+            <p className="text-xs text-slate-500 mt-1">{filteredFindings.length} of {findings.length} issue(s) — click any row to see remediation</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search title, resource…"
+              className="rounded-xl border border-white/8 bg-slate-950/60 px-4 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-400/30"
+            />
+            <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}
+              className="rounded-xl border border-white/8 bg-slate-950/60 px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-400/30">
+              <option value="ALL">All Severities</option>
+              <option value="CRITICAL">CRITICAL</option>
+              <option value="HIGH">HIGH</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="LOW">LOW</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-4">
+        {/* Category sidebar */}
+        <div className="hidden lg:flex flex-col gap-1 w-44 flex-shrink-0">
+          <p className="text-[10px] uppercase tracking-widest text-slate-500 px-2 mb-1">Category</p>
+          {categories.map(cat => {
+            const count = cat === 'ALL' ? findings.length : (categoryCounts[cat] || 0)
+            const isActive = categoryFilter === cat
+            return (
+              <button key={cat} onClick={() => setCategoryFilter(cat)}
+                className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${isActive ? 'bg-cyan-400/10 border border-cyan-400/25 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}>
+                <span>{cat}</span>
+                <span className={`mono text-xs rounded-lg px-1.5 py-0.5 ${isActive ? 'bg-cyan-400/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Findings list */}
+        <div className="flex-1 space-y-2 min-w-0">
+          {/* Mobile category pills */}
+          <div className="flex lg:hidden gap-2 flex-wrap">
+            {categories.map(cat => (
+              <button key={cat} onClick={() => setCategoryFilter(cat)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${categoryFilter === cat ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-300' : 'border-white/8 bg-white/3 text-slate-400'}`}>
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {filteredFindings.map(item => (
+            <div key={item.id}>
+              <div onClick={() => setExpandedRow(expandedRow === item.id ? null : item.id)}
+                className={`rounded-xl border-l-2 border border-white/8 bg-slate-900/80 px-4 py-3.5 cursor-pointer transition hover:bg-slate-900 ${severityAccent(item.severity)}`}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass(item.severity)}`}>{item.severity}</span>
+                  <h4 className="text-sm font-semibold text-white">{item.title}</h4>
+                  <span className="rounded-lg border border-white/8 bg-white/3 px-2 py-0.5 text-[10px] text-slate-400">{item.category}</span>
+                  <span className="ml-auto mono text-[10px] text-slate-500">{expandedRow === item.id ? '▲' : '▼'}</span>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-400">{item.resource}</p>
+              </div>
+              {expandedRow === item.id && (
+                <div className="rounded-b-xl border border-t-0 border-white/8 bg-slate-950/80 px-4 py-4 space-y-3 fade-in">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Detail</p>
+                    <p className="text-sm text-slate-300">{item.description}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-emerald-400/70 mb-1">Remediation</p>
+                    <p className="text-sm text-emerald-300/90">{item.remediation}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {filteredFindings.length === 0 && (
+            <div className="rounded-2xl border border-white/8 bg-slate-900/60 p-10 text-center text-sm text-slate-500">No findings match your filter.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Main App ───────────────────────────────────────────────────────────── */
 export default function App() {
   const [page, setPage] = useState('dashboard')
@@ -547,6 +655,8 @@ export default function App() {
   const [loadingReports, setLoadingReports] = useState(true)
   const [expandedRow, setExpandedRow] = useState(null)
   const [viewingReport, setViewingReport] = useState(null)   // { data, filename }
+  const [cliOutput, setCliOutput] = useState(null)
+  const [categoryFilter, setCategoryFilter] = useState('ALL')
 
   const findings = useMemo(() => {
     if (!latestReport) return []
@@ -569,10 +679,10 @@ export default function App() {
     const sgs  = new Set(findings.filter(f => f.category === 'Network').map(f => f.resource)).size
     const vols = findings.filter(f => f.category === 'Storage').length
     return [
-      { title: 'Total Findings', value: String(latestReport.total_findings), note: 'latest scan',         accent: 'bg-white/20',   delay: 1 },
-      { title: 'Network Issues', value: String(sgs),  note: 'security group rules', accent: 'bg-cyan-400',   delay: 2 },
-      { title: 'Storage Issues', value: String(vols), note: 'volume checks',         accent: 'bg-blue-400',   delay: 3 },
-      { title: 'Risk Score',     value: `${Math.round(latestReport.risk_score)}`, note: riskLabel(latestReport.risk_score).label, accent: 'bg-cyan-400', delay: 4 },
+      { title: 'Total Findings', value: String(latestReport.total_findings), note: 'latest scan',          accent: 'bg-white/20',  delay: 1, onClick: () => goToFindings('ALL') },
+      { title: 'Network Issues', value: String(sgs),  note: 'security group rules',  accent: 'bg-cyan-400',  delay: 2, onClick: () => goToFindings('Network') },
+      { title: 'Storage Issues', value: String(vols), note: 'volume checks',          accent: 'bg-blue-400',  delay: 3, onClick: () => goToFindings('Storage') },
+      { title: 'Risk Score',     value: `${Math.round(latestReport.risk_score)}`, note: riskLabel(latestReport.risk_score).label, accent: 'bg-cyan-400', delay: 4, onClick: null },
     ]
   }, [latestReport, findings])
 
@@ -597,7 +707,9 @@ export default function App() {
       const res = await fetch(`${API_BASE}/scan`, { method: 'POST' })
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Scan failed') }
       const report = await res.json()
-      setLatestReport(report)
+      const { __cli_output__, ...cleanReport } = report
+      setCliOutput(__cli_output__ || null)
+      setLatestReport(cleanReport)
       await fetchReports()
     } catch (e) { setScanError(e.message) }
     finally { setScanning(false) }
@@ -613,9 +725,17 @@ export default function App() {
 
   const filteredFindings = useMemo(() => findings.filter(item => {
     const matchesSev = severityFilter === 'ALL' || item.severity === severityFilter
+    const matchesCat = categoryFilter === 'ALL' || item.category === categoryFilter
     const q = search.toLowerCase()
-    return matchesSev && (item.title.toLowerCase().includes(q) || item.resource.toLowerCase().includes(q) || item.category.toLowerCase().includes(q))
-  }), [findings, search, severityFilter])
+    return matchesSev && matchesCat && (item.title.toLowerCase().includes(q) || item.resource.toLowerCase().includes(q) || item.category.toLowerCase().includes(q))
+  }), [findings, search, severityFilter, categoryFilter])
+
+  function goToFindings(category = 'ALL') {
+    setCategoryFilter(category)
+    setSeverityFilter('ALL')
+    setSearch('')
+    setPage('findings')
+  }
 
   const ScanButton = ({ className, label }) => (
     <button onClick={runScan} disabled={scanning} className={className}>
@@ -706,7 +826,7 @@ export default function App() {
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {stats.map(s => <StatCard key={s.title} title={s.title} value={s.value} note={s.note} accentColor={s.accent} delay={s.delay} />)}
+              {stats.map(s => <StatCard key={s.title} title={s.title} value={s.value} note={s.note} accentColor={s.accent} delay={s.delay} onClick={s.onClick} />)}
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
@@ -765,68 +885,32 @@ export default function App() {
                 ))}
               </div>
             </div>
+            {/* CLI Output terminal */}
+            {cliOutput && (
+              <div className="rounded-2xl border border-white/8 bg-slate-900/80 p-5 fade-in">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex gap-1.5">
+                      <span className="h-3 w-3 rounded-full bg-red-500/70" />
+                      <span className="h-3 w-3 rounded-full bg-yellow-500/70" />
+                      <span className="h-3 w-3 rounded-full bg-emerald-500/70" />
+                    </span>
+                    <p className="mono text-[11px] text-slate-500 ml-1">scanner output</p>
+                  </div>
+                  <button onClick={() => setCliOutput(null)} className="text-xs text-slate-600 hover:text-slate-400 transition">✕ dismiss</button>
+                </div>
+                <pre className="mono text-xs text-emerald-300/90 leading-relaxed overflow-x-auto overflow-y-auto max-h-72 whitespace-pre-wrap bg-slate-950/60 rounded-xl p-4 border border-white/5">
+                  {cliOutput}
+                </pre>
+              </div>
+            )}
           </>
         )}
       </div>
     )
   }
 
-  /* ── Findings Page ── */
-  const FindingsPage = () => (
-    <div className="space-y-4 fade-in">
-      <div className="rounded-2xl border border-white/8 bg-slate-900/80 p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-2xl font-black text-white">Findings</h2>
-            <p className="text-xs text-slate-500 mt-1">{findings.length} issue(s) — click any row to see remediation</p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title, resource, category…"
-              className="rounded-xl border border-white/8 bg-slate-950/60 px-4 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-400/30" />
-            <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}
-              className="rounded-xl border border-white/8 bg-slate-950/60 px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-400/30">
-              <option value="ALL">All Severities</option>
-              <option value="CRITICAL">CRITICAL</option>
-              <option value="HIGH">HIGH</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="LOW">LOW</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div className="space-y-2">
-        {filteredFindings.map(item => (
-          <div key={item.id}>
-            <div onClick={() => setExpandedRow(expandedRow === item.id ? null : item.id)}
-              className={`rounded-xl border-l-2 border border-white/8 bg-slate-900/80 px-4 py-3.5 cursor-pointer transition hover:bg-slate-900 ${severityAccent(item.severity)}`}>
-              <div className="flex flex-wrap items-center gap-3">
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass(item.severity)}`}>{item.severity}</span>
-                <h4 className="text-sm font-semibold text-white">{item.title}</h4>
-                <span className="rounded-lg border border-white/8 bg-white/3 px-2 py-0.5 text-[10px] text-slate-400">{item.category}</span>
-                <span className="ml-auto mono text-[10px] text-slate-500">{expandedRow === item.id ? '▲' : '▼'}</span>
-              </div>
-              <p className="mt-1.5 text-xs text-slate-400">{item.resource}</p>
-            </div>
-            {expandedRow === item.id && (
-              <div className="rounded-b-xl border border-t-0 border-white/8 bg-slate-950/80 px-4 py-4 space-y-3 fade-in">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Detail</p>
-                  <p className="text-sm text-slate-300">{item.description}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-emerald-400/70 mb-1">Remediation</p>
-                  <p className="text-sm text-emerald-300/90">{item.remediation}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-        {filteredFindings.length === 0 && (
-          <div className="rounded-2xl border border-white/8 bg-slate-900/60 p-10 text-center text-sm text-slate-500">No findings match your filter.</div>
-        )}
-      </div>
-    </div>
-  )
+
 
   /* ── Reports Page ── */
   const ReportsPage = () => (
@@ -914,7 +998,7 @@ export default function App() {
           ) : (
             <>
               {page === 'dashboard' && <DashboardPage />}
-              {page === 'findings'  && <FindingsPage />}
+              {page === 'findings'  && <FindingsPage findings={findings} filteredFindings={filteredFindings} search={search} setSearch={setSearch} severityFilter={severityFilter} setSeverityFilter={setSeverityFilter} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} expandedRow={expandedRow} setExpandedRow={setExpandedRow} />}
               {page === 'reports'   && <ReportsPage />}
               {page === 'history'   && <HistoryPage allReports={reports} />}
               {page === 'settings'  && <SettingsPage />}
